@@ -1,55 +1,37 @@
-# clamp_controller
-Python-based high-level controller to monitor and command a network of distributed clamps.
+# itj_process_controller
+Python-based high-level controller to coordinate robotic process for **Spatial Timber Assembly using Distributed Architectural Robots**. 
 
 This repo is part of the [Robotic Assembled Timber Structures with Integral Timber Joints](https://github.com/gramaziokohler/integral_timber_joints) project.
 
 ## Repo folder structure
 
-**/src/clamp_controller** - Contains all the import-able class and functions.
+**/src/process_controller** - Contains the classes and **run.py** for starting the Process Controller
 
-**/src/controller_instances** - Contains instances of customized controllers for different projects.
 
-**/src/serial_radio_transport_driver** - A light weight library for transporting Serial Message to the [USB Dongle](https://github.com/gramaziokohler/clamp_electronics/blob/master/00_USBRadioDongle/00_USBRadioDongle.md), the message format is described in the [radio firmware](https://github.com/gramaziokohler/clamp_firmware/tree/master/serial_radio).
 
 ## Design Goals
 
-**ClampModel**
+This controller interprets the Actions and Movements in a specified Process file (as defined in `integral_timber_joints.process.RobotClampAssemblyProcess`).
 
-Digital twin of a clamp. Contains all the properties (e.g. step/mm conversion, soft limit, address) of a clamp and the telemetry reading.
+It maintains a state machine that controls the sequential execution of the planned Movements. It communicates with a number of controllers and more can be added easily:
 
-Also contain functions to:
+- ABB Robot Controller (compas_rrc_ros)
+- Clamp Controller (`controller_instances` in [clamp_controller](https://github.com/gramaziokohler/clamp_controller) repository)
+- Visual Docking  (`visual_docking` in [clamp_controller](https://github.com/gramaziokohler/clamp_controller) repository)
 
-- Decode received telemetry
+This controller maintains communication flow control with the ABB Robot controller for robotic movements with many TrajectoryPoints, as in planned trajectories.  It allows starting and stopping (from teach pendent or emergency stops) in a graceful manner. In case of stops or robot controller error (due to collision or other non-recoverable errors), it supports graceful restarts at a user defined trajectory point.
 
-- Conversion between linear position and step position.
+In normal operation, it can execute multiple Movements automatically in RUN mode (automatically moving execution pointer to next Movement) or STEP mode. The STEP mode is particularly useful during debugging.
 
-**SerialCommander**
+This controller manages the execution speed of all movements. It allows easy setting and resetting of trajectory speed across all controllers. For synchronized movements, it can also ensures robot TP speed overrides are set correctly (which are often set to <100% during debugging). 
 
-The main model of the application. Contains:
+It maintains synchronization for RobotClampSyncMovements where the Robot Controller and Clamp Controller has to start and stop simultaneously. Such stop scenario can be triggered either by the robot controller, robot TP deadman switch, clamp firmware via Clamp Controller, Process Controller UI Stop button and Clamp Controller UI stop button.
 
-- Instance of all available `ClampModel`
-- Instance of the `SerialPort` that connects to the USBRadioDongle
-- Instance of the `RosClampCommandListener` that connects to a ROS core via roslibpy
+It can perform sensor checks on the robot for movements such as Tool Changer Lock and Unlock. Although not implemented, automatic retry is possible when the lock is unsuccessful. 
 
-Functions to:
+The controller can work with Visual Docking ROS node for acquiring Aruco marker alignment. It can compute offset values for offsetting subsequent planned path. The offset values are applied to the Cartesian gantry. Offset values on each Joint can also be entered manually. 
 
-- Accept high-level synchronized move command for multiple clamps.
-- Create low level move, home, speed-set and stop command.
-- Send low level command to clamp with resend-on-Nack option.
-
-**RosClampCommandListener**
-
-A class that maintains the connection with ROS via roslibpy and listens-for (and replies-to) commands received as a rostopic.
-
-**CommanderGUI**
-
-A long function that create the tkinter UI for monitoring and control. This UI
-
-Alternatively, it is possible to run the `SerialCommander` directly without UI, all the connections and settings can be accessed by code.
-
-**RemoteClampFunctionCall**
-
-A class for calling the clamp function from a remote process via roslibpy and ROS.
+The controller additionally implements a Gantry Shake feature to help when tool changer fail to lock when being picked up. It also provides UI for setting robot softness during soft moves for certain movements.   
 
 ## Installation
 
@@ -94,58 +76,21 @@ Multiple devices need to cooperate with each other during robotic execution. A n
 
 ```
 cd local_directory_for_log_files
-python local_path_to_repo\src\controller_instances\08_TokyoCommander_UI+ROS.py
-python -m controller_instances.10_Commander4Clamps4Screws
+python -m process_controller.run
 ```
+
+It is also possible to pass `-f` arg to specify the process file location to skip the file selection dialog. For example
+
+```
+python -m process_controller.run -f "C:\\Users\\leungp\\Documents\\GitHub\\integral_timber_joints\\external\\itj_design_study\\210419_HyparHut\\results\\Shelter_process.json"
+```
+
+
 
 UI like this should appear:
 
-![UI_Tokyo_JustStarted](doc/UI_Tokyo_JustStarted.jpg)
+![process_controller_UI_process_loaded](doc/process_controller_UI_process_loaded.jpg)
 
-### Remote calling clamp functions
-
-To remotely call clamp functions from a separate python execution/process (e.g. [itj_process](https://github.com/gramaziokohler/itj_process) controllers), you need to import **RemoteClampFunctionCall**. The following things should be started before making calls:
-
-- ros and ros_bridge is started on the linux machine, for example: ` roslaunch rosbridge_server rosbridge_websocket.launch`
-- the calling machine and the ros machine is on the same local network.
-- a clamp_controller Controller Instance has started and is already connected to ROS
-
-Example code:
-
-```
-# Connect to ROS via roslibpy
-   hostip = '192.168.43.141'
-   clamps_connection = RemoteClampFunctionCall(hostip)
-
-# Command to send clamp to target (non-blocking)
-   clamps_connection.sendD(ROS_VEL_GOTO_COMMAND)
-# Command to send clamp to target (blocking)
-   success = clamps_connection.send_and_wait(ROS_VEL_GOTO_COMMAND, 1000)
-# Command to stop clamps (non-blocking)
-self.
-   clamps_connection.send(ROS_STOP_COMMAND(['1','2']))
-```
-
-Read the [RemoteClampFunctionCall.py](src\clamp_controller\RemoteClampFunctionCall.py) for available functions.
-
-
-
-Addresses
--------------
-
-In the latest use case, 4 Clamps and 4 Screwdrivers are used, also including 4 cameras on Clamps and 1 camera on Toolcanger. The addresses are as follows:
-
-| Type       | id   | radio address | camera address |
-| ---------- | ---- | ------------- | -------------- |
-| CL3        | c1   | 1             | 192.168.1.101  |
-| CL3        | c2   | 2             | 192.168.1.102  |
-| CL3M       | c3   | 3             | 192.168.1.103  |
-| CL3M       | c4   | 4             | 192.168.1.104  |
-| SL1        | s1   | 5             |                |
-| SL1        | s2   | 6             |                |
-| SL1        | s3   | 7             |                |
-| SL1_G200   | s4   | 8             |                |
-| TC4_Camera |      |               | 192.168.1.100  |
 
 Credits
 -------------

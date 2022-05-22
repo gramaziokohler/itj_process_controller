@@ -137,7 +137,8 @@ class RobotClampExecutionModel(object):
         self.process_path = json_path
 
         # Load external movements if possible
-        external_movements = self.process.load_external_movements(os.path.dirname(self.process_path))
+        results_path = os.path.join(os.path.dirname(self.process_path), 'results')
+        external_movements = self.process.load_external_movements(results_path)
         logger_model.info("External Movemenmts: %s movements loaded" % len(external_movements))
 
         # mark_movements_as_soft_move
@@ -263,7 +264,7 @@ def _mark_movements_as_softmove(process):
 
     logger_model.info("%i RoboticClampSyncLinearMovement Marked as Soft Move" % (count_RoboticClampSyncLinearMovement))
     logger_model.info("%i RobotScrewdriverSyncLinearMovement Marked as Soft Move" % (count_RobotScrewdriverSyncLinearMovement))
-    logger_model.info("%i count_RobotScrewdriverRetractMovement Marked as Soft Move" % (count_RobotScrewdriverRetractMovement))
+    logger_model.info("%i RobotScrewdriverRetractMovement Marked as Soft Move" % (count_RobotScrewdriverRetractMovement))
 
 
 def _mark_movements_operator_stop(process):

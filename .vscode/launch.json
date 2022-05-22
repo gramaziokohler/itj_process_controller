@@ -19,6 +19,14 @@
             "program": "${workspaceFolder}/src/process_controller/run.py",
             "console": "integratedTerminal",
             "args": ["-f", "C:\\Users\\leungp\\Documents\\GitHub\\integral_timber_joints\\external\\itj_design_study\\210419_HyparHut\\results\\Shelter_process.json"]
+        },
+        {
+            "name": "Process Controller with CantiRight process",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/process_controller/run.py",
+            "console": "integratedTerminal",
+            "args": ["-f", "C:\\Users\\leungp\\Documents\\GitHub\\integral_timber_joints\\external\\itj_design_study\\220407_CantiBoxRight\\CantiBoxRight_process.json"]
         }
     ]
 

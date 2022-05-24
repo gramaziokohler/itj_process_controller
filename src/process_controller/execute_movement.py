@@ -1085,7 +1085,11 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
             "AcquireDockingOffset cannot start because Clamp ROS is not connected")
         return False
 
-    if not model.process.movement_has_end_robot_config(movement):
+    # Use end config of previous robotic movement, or start config of next movement
+    prev_robotic_movement = model.process.get_prev_robotic_movement(movement)
+    next_robotic_movement = model.process.get_next_robotic_movement(movement)
+    original_config =  model.process.get_movement_end_robot_config(prev_robotic_movement) or model.process.get_movement_start_robot_config(next_robotic_movement)
+    if original_config is None:
         logger_exe.warning("Error Attempt to execute execute_acquire_docking_offset but the movement end_state does not have robot config.")
         return False
 
@@ -1171,7 +1175,7 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
         guiref['offset']['Ext_Y'].set("%.4g" % round(prev_offset[1] + new_offset[1], 4))
         guiref['offset']['Ext_Z'].set("%.4g" % round(prev_offset[2] + new_offset[2], 4))
         # * Move the robot to end config of movement with new offset
-        config = model.process.get_movement_end_robot_config(movement)
+        config = original_config
         ext_values = apply_ext_offsets(guiref, to_millimeters(config.prismatic_values))
         joint_values = apply_joint_offsets(guiref, to_degrees(config.revolute_values))
 

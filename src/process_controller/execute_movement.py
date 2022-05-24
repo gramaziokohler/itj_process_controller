@@ -1263,6 +1263,36 @@ def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, 
 
     return True
 
+def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
+    """
+    Read and display the last trajectory point values from the selected movement
+    Dispaly the values with joint offsets added.
+    Read from the robot current joint values
+    Display the difference
+
+    """
+    # Construct and send rrc command
+    config = model.process.get_movement_end_robot_config(movement)
+    ext_values = to_millimeters(config.prismatic_values)
+    joint_values = to_degrees(config.revolute_values)
+    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+
+    # Apply Offsets
+    ext_values = apply_ext_offsets(guiref, ext_values)
+    joint_values = apply_joint_offsets(guiref, joint_values)
+    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+
+    model.run_status = RunStatus.JOGGING
+    future = send_and_wait_unless_cancel(model, rrc.GetJoints())
+    model.run_status = RunStatus.STOPPED
+    if future.done:
+        joint_values, ext_values = future.value
+        logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+    else:
+        logger_exe.warning("UI stop button pressed before MoveToJoints in JogRobotToState Movement is completed.")
+
+    return future.done
+
 
 def execute_some_delay(model: RobotClampExecutionModel, movement: Movement):
     for _ in range(10):

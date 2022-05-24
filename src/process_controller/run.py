@@ -272,6 +272,19 @@ def execute_background_commands(guiref, model: RobotClampExecutionModel, q):
                 jog_thread.name = "Jogging Thread"
                 jog_thread.start()
 
+            # Handelling UI_COMPARE_JOINT_VALUES
+            if bg_cmd_check(msg, guiref, model, ProcessControllerBackgroundCommand.UI_COMPARE_JOINT_VALUES, check_robot_connection=True, check_status_is_stopped=True, check_selected_is_movement=True):
+                tree_row_id = treeview_get_selected_id(guiref)
+                movement = model.movements[tree_row_id]
+                if not model.process.movement_has_end_robot_config(movement):
+                    logger_bg.warning(
+                        "Selected item does not have an END robot config")
+                    return False
+
+                jog_thread = Thread(target=execute_compare_joint_values, args=(guiref, model, movement), daemon=True)
+                jog_thread.name = "Joint Value Compare Thread"
+                jog_thread.start()
+
             # Handelling Restart Camera
             if bg_cmd_check(msg, guiref, model, ProcessControllerBackgroundCommand.UI_RESTART_CAMERA, check_robot_connection=True):
                 model.ros_robot.send(rrc.SystemSetDigital("doUnitR11Out1",0))

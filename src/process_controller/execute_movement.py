@@ -105,7 +105,9 @@ def execute_movement(guiref, model: RobotClampExecutionModel, movement: Movement
         tool_id = movement.tool_id  # type: str
         tool_type = type(model.process.tool(tool_id))
         digital_output = movement.digital_output
-        if (digital_output == DigitalOutput.OpenGripper or digital_output == DigitalOutput.CloseGripper) and tool_type == Screwdriver:
+        if (digital_output == DigitalOutput.LockTool):
+            return execute_lock_tool_movement(guiref, model, movement)
+        elif (digital_output == DigitalOutput.OpenGripper or digital_output == DigitalOutput.CloseGripper) and tool_type == Screwdriver:
             return execute_robotic_digital_output_screwdriver(guiref, model, movement)
         else:
             return execute_robotic_digital_output(guiref, model, movement)
@@ -182,6 +184,19 @@ def grip_load_instruction_from_beam(model: RobotClampExecutionModel, beam_id: st
     return rrc.CustomInstruction('r_A067_GripLoad', [], [mass, cog_x, cog_y, cog_z, aom_q1, aom_q2, aom_q3, aom_q4, inertia_x, inertia_y, inertia_z], feedback_level=rrc.FeedbackLevel.DONE)
 
 
+def wait_for_digital_signal(model: RobotClampExecutionModel, io_name, signal_value_to_wait_for):
+    while (True):
+        future = send_and_wait_unless_cancel(model, rrc.ReadDigital(io_name))
+        # User pressed cancel
+        if not future.done:
+            return False
+        # Check signal, if it is equal to expected value, we return
+        if future.value == signal_value_to_wait_for:
+            return True
+        # If not, we wait a tiny bit, send another read signal and check again
+        time.sleep(0.5)
+
+
 def execute_robotic_digital_output(guiref, model: RobotClampExecutionModel, movement: RoboticDigitalOutput):
     """Performs RoboticDigitalOutput Movement by setting the robot's IO signals
 
@@ -244,24 +259,12 @@ def execute_robotic_digital_output(guiref, model: RobotClampExecutionModel, move
             rrc.SetTool(tool_data_name, feedback_level=rrc.FeedbackLevel.DONE)))
         logger_exe.info("Unlocking tool %s (new tooldata = %s)" % (movement.tool_id, tool_data_name))
 
-    def wait_for_digital_signal(io_name, signal_value_to_wait_for):
-        while (True):
-            future = send_and_wait_unless_cancel(model, rrc.ReadDigital(io_name))
-            # User pressed cancel
-            if not future.done:
-                return False
-            # Check signal, if it is equal to expected value, we return
-            if future.value == signal_value_to_wait_for:
-                return True
-            # If not, we wait a tiny bit, send another read signal and check again
-            time.sleep(0.5)
-
     while (True):
         # * Check for IO completion
         if all([future.done for future in future_results]):
             if movement.digital_output == DigitalOutput.LockTool:
                 # Assert ToolChanger Lock Check signal is HIGH (1)
-                if not wait_for_digital_signal('diUnitR11In3', 1):
+                if not wait_for_digital_signal(model, 'diUnitR11In3', 1):
                     logger_exe.warning("UI stop button pressed before getting confirm signal.")
                     return False
                 else:
@@ -272,7 +275,7 @@ def execute_robotic_digital_output(guiref, model: RobotClampExecutionModel, move
 
             if movement.digital_output == DigitalOutput.UnlockTool:
                 # Assert ToolChanger Lock Check signal is HIGH (1)
-                if not wait_for_digital_signal('diUnitR11In3', 0):
+                if not wait_for_digital_signal(model, 'diUnitR11In3', 0):
                     logger_exe.warning("UI stop button pressed before getting confirm signal.")
                     return False
                 else:
@@ -343,6 +346,98 @@ def execute_robotic_digital_output_screwdriver(guiref, model: RobotClampExecutio
             return False
 
         time.sleep(0.02)
+
+
+def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement: RoboticDigitalOutput, shake_attempts = 4):
+    # * Check to make sure we are making sense
+    if movement.digital_output != DigitalOutput.LockTool:
+        logger_exe.error("execute_lock_tool_movement() called with movement.digital_output != DigitalOutput.LockTool")
+        return False
+
+    # * Perform probing till switch is clicked
+    probe_success = execute_toolchanger_probe(guiref, model)
+    if not probe_success:
+        logger_exe.info("execute_lock_tool_movement() Failed because probing cannot find switch.")
+        return False
+
+    # * Lock Tool changer
+    future_results = []
+
+    # Set tool data for robot controller
+    tool_data_name = 't_A067_Tool_' + model.process.tool(movement.tool_id).type_name
+    logger_exe.info("Locking to tool %s (new tooldata = %s)" % (movement.tool_id, tool_data_name))
+    future_results.append(model.ros_robot.send(
+        rrc.SetTool(tool_data_name, feedback_level=rrc.FeedbackLevel.DONE)))
+
+    # Digital Out for valves
+    future_results.append(model.ros_robot.send(
+        rrc.SetDigital('doUnitR11ValveA1', 1, feedback_level=1)))
+    future_results.append(model.ros_robot.send(
+        rrc.SetDigital('doUnitR11ValveB1', 0, feedback_level=1)))
+
+    while (True):
+        # * Exit condition - user cancel before robot complete valve IO
+        if model.run_status == RunStatus.STOPPED:
+            logger_exe.warning("execute_lock_tool_movement (%s) canceled." % movement)
+            return False
+
+        # * Check for IO completion
+        if all([future.done for future in future_results]):
+            break
+
+    # * Check ToolChanger Lock Check signal and probe signal.
+    shake_count = 0
+    while(True):
+        # * Check signal
+        # Toolchanger is locked if singal is HIGH (1)
+        future = send_and_wait_unless_cancel(model, rrc.ReadDigital('diUnitR11In3'))
+        if not future.done:
+            logger_exe.warning("execute_lock_tool_movement (%s) canceled." % movement)
+            return False
+        tc_lock = (future.value == 1)
+        # Probe is touched if signal is LOW (0)
+        future = send_and_wait_unless_cancel(model, rrc.ReadDigital('diUnitR11In5'))
+        if not future.done:
+            logger_exe.warning("execute_lock_tool_movement (%s) canceled." % movement)
+            return False
+        probe_touch = (future.value == 0)
+
+        # * Success if both switches are okay.
+        if tc_lock and probe_touch:
+            logger_exe.info("DigitalOutput LockTool (%s) for tool %s Success. Tool is locked. Probe is touched." % (movement.movement_id, movement.tool_id))
+            guiref['exe']['toolchanger_signal'].set("Locked")
+            return True
+
+        # * Completely fail if lock is okay but probe is not touched.
+        if tc_lock and not probe_touch:
+            logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Tool is locked. Probe is not touched." % (movement.movement_id, movement.tool_id))
+
+            model.ros_robot.send(rrc.SetDigital('doUnitR11ValveA1', 1, feedback_level=1))
+            result = send_and_wait_unless_cancel(model, rrc.SetDigital('doUnitR11ValveB1', 0, feedback_level=1))
+            if result.done:
+                logger_exe.warning("Tool Changer changed back to Unlocked.")
+                guiref['exe']['toolchanger_signal'].set("Unlocked")
+            else:
+                logger_exe.warning("Tool Changer Unlock command sent, but user stopped before confirmation return.")
+                guiref['exe']['toolchanger_signal'].set("Unlocking")
+            return False
+
+        # * In the case tc_lock is not aquired, perform gantry shake and try again.
+        if shake_count >= shake_attempts:
+            logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Exhausted shake attempts: %s" % (movement.movement_id, movement.tool_id, shake_count))
+
+        logger_exe.info("Bad lock: tc_lock = False, will attempt to shake. (probe_touch = %s)" % (probe_touch))
+        shake_amount = 0.3 + (shake_count * 0.5)
+        shake_speed = 30
+        shake_repeat = 3
+        shake_success = execute_shake_gantry(guiref, model, shake_amount, shake_speed, shake_repeat)
+        if not shake_success:
+            logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Shake Failed." % (movement.movement_id, movement.tool_id))
+            return False
+
+        time.sleep(0.3)
+
+    return False
 
 
 def execute_operator_attach_tool_movement(guiref, model: RobotClampExecutionModel, movement: OperatorAttachToolMovement):

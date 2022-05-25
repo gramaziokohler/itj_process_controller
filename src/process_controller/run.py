@@ -268,7 +268,7 @@ def execute_background_commands(guiref, model: RobotClampExecutionModel, q):
                 shake_amount = msg.shake_amount
                 shake_speed = msg.shake_speed
                 shake_repeat = msg.shake_repeat
-                jog_thread = Thread(target=execute_shake_gantry, args=(guiref, model, shake_amount, shake_speed, shake_repeat, q), daemon=True)
+                jog_thread = Thread(target=execute_ui_shake_gantry, args=(guiref, model, shake_amount, shake_speed, shake_repeat, q), daemon=True)
                 jog_thread.name = "Jogging Thread"
                 jog_thread.start()
 

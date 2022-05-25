@@ -1191,19 +1191,21 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
     logger_exe.warning("AcquireDockingOffset exhausted maxIteration %s without convergence" % max_iteration)
     return False
 
+def execute_ui_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, shake_speed, shake_repeat, q):
+    model.run_status = RunStatus.JOGGING
+    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
+    execute_shake_gantry(guiref, model, shake_amount, shake_speed, shake_repeat)
+    model.run_status = RunStatus.STOPPED
+    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
 
-def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, shake_speed, shake_repeat, q):
+
+def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, shake_speed, shake_repeat):
     """This function is scheduled by the ShakeGantryPopup to create and send the shaking commands.
     This function is intended to be run in a separate deamon thread.
 
     """
-    model.run_status = RunStatus.JOGGING
-    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
-
     def failure_routine(message):
         logger_exe.info(message)
-        model.run_status = RunStatus.STOPPED
-        q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
         return False
 
     # * Enable softmove state.
@@ -1243,7 +1245,7 @@ def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, 
 
     future = send_and_wait_unless_cancel(model, rrc.MoveToJoints(robot_joints, external_axes, shake_speed, rrc.Zone.FINE))
     if future.done:
-        logger_exe.info("execute_shake_gantry shaking complete")
+        logger_exe.info("execute_shake_gantry shaking complete. (%.2fmm, %.2fmm/s x%i)" % (shake_amount, shake_speed, shake_repeat))
     else:
         return failure_routine("execute_shake_gantry shaking canceled")
 
@@ -1261,9 +1263,6 @@ def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, 
     # * Disable softmove state.
     if not robot_softmove_blocking(model, enable=False):
         return failure_routine("execute_shake_gantry() stopped beacause robot_softmove_blocking() failed.")
-
-    model.run_status = RunStatus.STOPPED
-    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
 
     return True
 

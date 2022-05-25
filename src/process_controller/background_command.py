@@ -24,6 +24,7 @@ class ProcessControllerBackgroundCommand(Enum):
     UI_SOFTMODE_DISABLE = auto()
     UI_COMPUTE_VISUAL_CORRECTION = auto()
     UI_COMPARE_JOINT_VALUES = auto()
+    UI_TOOLCHANGER_PROBE = auto()
 
     PRINT_ACTION_SUMMARY = auto()
     MODEL_LOAD_PROCESS = auto()

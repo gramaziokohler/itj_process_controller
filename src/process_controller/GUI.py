@@ -332,6 +332,12 @@ def create_ui_execution(root, q: Queue):
     tk.Button(right_frame, text="SHAKE Gantry", command=on_shake_gantry_button_click,
               font=tk.big_button_font, width=20).pack(fill=tk.X, side=tk.TOP)
 
+    def on_tool_changer_probe_button_click(event=None):
+        logger_ui.info("Button Pressed: Compare joint values")
+        q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_TOOLCHANGER_PROBE))
+    tk.Button(right_frame, text="Tool Changer Probe", command=on_tool_changer_probe_button_click,
+              font=tk.big_button_font, width=20).pack(fill=tk.X, side=tk.TOP)
+
     def on_compare_joint_value_button_click(event=None):
         logger_ui.info("Button Pressed: Compare joint values")
         q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_COMPARE_JOINT_VALUES))

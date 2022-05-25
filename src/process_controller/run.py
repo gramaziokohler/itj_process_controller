@@ -285,6 +285,12 @@ def execute_background_commands(guiref, model: RobotClampExecutionModel, q):
                 jog_thread.name = "Joint Value Compare Thread"
                 jog_thread.start()
 
+            # Handelling UI_TOOLCHANGER_PROBE
+            if bg_cmd_check(msg, guiref, model, ProcessControllerBackgroundCommand.UI_TOOLCHANGER_PROBE, check_robot_connection=True, check_status_is_stopped=True):
+                jog_thread = Thread(target=execute_ui_toolchanger_probe, args=(guiref, model, q), daemon=True)
+                jog_thread.name = "Toolchanger Probe Thread"
+                jog_thread.start()
+
             # Handelling Restart Camera
             if bg_cmd_check(msg, guiref, model, ProcessControllerBackgroundCommand.UI_RESTART_CAMERA, check_robot_connection=True):
                 model.ros_robot.send(rrc.SystemSetDigital("doUnitR11Out1",0))

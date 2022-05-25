@@ -1088,7 +1088,7 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
     # Use end config of previous robotic movement, or start config of next movement
     prev_robotic_movement = model.process.get_prev_robotic_movement(movement)
     next_robotic_movement = model.process.get_next_robotic_movement(movement)
-    original_config =  model.process.get_movement_end_robot_config(prev_robotic_movement) or model.process.get_movement_start_robot_config(next_robotic_movement)
+    original_config = model.process.get_movement_end_robot_config(prev_robotic_movement) or model.process.get_movement_start_robot_config(next_robotic_movement)
     if original_config is None:
         logger_exe.warning("Error Attempt to execute execute_acquire_docking_offset but the movement end_state does not have robot config.")
         return False
@@ -1267,6 +1267,7 @@ def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, 
 
     return True
 
+
 def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
     """
     Read and display the last trajectory point values from the selected movement
@@ -1294,13 +1295,97 @@ def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
         actual_j = list(_ext_values)[:3]
         actual_e = list(_joint_values)[:6]
         logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (actual_e, actual_j))
-        error_j = [a-b for a , b in zip (actual_j, target_j)]
-        error_e = [a-b for a , b in zip (actual_e, target_e)]
+        error_j = [a-b for a, b in zip(actual_j, target_j)]
+        error_e = [a-b for a, b in zip(actual_e, target_e)]
         logger_exe.info("Error (Ext, Joint): %s, %s" % (error_e, error_j))
     else:
         logger_exe.warning("UI stop button pressed before MoveToJoints in JogRobotToState Movement is completed.")
 
     return future.done
+
+
+def execute_ui_toolchanger_probe(guiref, model, q):
+    model.run_status = RunStatus.JOGGING
+    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
+    success = execute_toolchanger_probe(guiref, model, q)
+    model.run_status = RunStatus.STOPPED
+    q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
+
+
+def execute_toolchanger_probe(guiref, model, q, probing_increment=0.5, maximum_probing_distance=15):
+    """
+    Move robot grantry towards the flange (=toolchanger)'s Z+ direction
+    until probing switch signal is LOW.
+
+    Funcion will return True if the switch successfully went LOW within a
+    certain amount of probing distance. Otherwise return False.
+    The probing distance is calculated from the actual starting value of the gantry position,
+    not the
+
+    When successful, the probing offset is set back to UI's offset.
+    If unsuccessful, the UI's gantry offset is not changed.
+    """
+    # * Holder for offset
+    new_offset = [0, 0, 0]
+    prev_offset = get_ext_offsets(guiref)
+    distance_since_start = 0
+
+    # * Aquire starting gantry position and frame
+    future = send_and_wait_unless_cancel(model, rrc.GetJoints())
+    if future.done:
+        starting_j, starting_e = future.value
+        logger_exe.info("execute_toolchanger_probe begins at external_axes = %s" % (starting_e))
+    else:
+        logger_exe.info("execute_toolchanger_probe cancelled.")
+        return False
+
+    future = send_and_wait_unless_cancel(model, rrc.GetFrame())
+    if future.done:
+        starting_frame = future.value
+        logger_exe.info("execute_toolchanger_probe begins at starting_frame = %s" % (starting_frame))
+    else:
+        logger_exe.info("execute_toolchanger_probe cancelled.")
+        return False
+
+    # * Compute direction from probing_increment
+    direction_vector = starting_frame.zaxis.unitized().scaled(probing_increment)
+
+    while (distance_since_start < maximum_probing_distance):
+        # * Check if probe switch is LOW
+        future = send_and_wait_unless_cancel(model, rrc.ReadDigital('diUnitR11In5'))
+        if future.done:
+            # Exist condition for success
+            if future.value == 0:
+                logger_exe.info("Probe Touched.")
+                # * Apply new offsets to existing offsets in UI
+                guiref['offset']['Ext_X'].set("%.4g" % round(prev_offset[0] + new_offset[0], 4))
+                guiref['offset']['Ext_Y'].set("%.4g" % round(prev_offset[1] + new_offset[1], 4))
+                guiref['offset']['Ext_Z'].set("%.4g" % round(prev_offset[2] + new_offset[2], 4))
+                logger_exe.info("execute_toolchanger_probe success after %smm, new gantry offset = %s" % (distance_since_start, get_ext_offsets(guiref)))
+                return True
+        else:
+            logger_exe.info("execute_toolchanger_probe cancelled.")
+            return False
+
+        # * Compute new ext axis value
+        new_offset[0] += direction_vector.x
+        new_offset[1] += direction_vector.y * -1
+        new_offset[2] += direction_vector.z * -1
+        distance_since_start += probing_increment
+
+        ext_values = apply_ext_offsets(guiref, list(starting_e)[:3])
+        new_e = [p + q for p, q in zip(new_offset, ext_values)]
+
+        # * Move gantry
+        logger_exe.info("Moving gantry, current probing distance = %smm" % (distance_since_start))
+        instruction = rrc.MoveToJoints(starting_j, new_e, 500, rrc.Zone.FINE, feedback_level=rrc.FeedbackLevel.DONE)
+        future = send_and_wait_unless_cancel(model, instruction)
+        if not future.done:
+            logger_exe.warning("UI stop button pressed before MoveToJoints in JogRobotToState Movement is completed.")
+            return False
+
+    logger_exe.info("execute_toolchanger_probe failed after probing for %smm. Gantry offset unchanged." % distance_since_start)
+    return False
 
 
 def execute_some_delay(model: RobotClampExecutionModel, movement: Movement):

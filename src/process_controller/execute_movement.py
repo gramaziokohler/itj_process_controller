@@ -1277,21 +1277,26 @@ def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
     """
     # Construct and send rrc command
     config = model.process.get_movement_end_robot_config(movement)
-    ext_values = to_millimeters(config.prismatic_values)
-    joint_values = to_degrees(config.revolute_values)
-    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+    target_e = to_millimeters(config.prismatic_values)
+    target_j = to_degrees(config.revolute_values)
+    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (target_e, target_j))
 
     # Apply Offsets
-    ext_values = apply_ext_offsets(guiref, ext_values)
-    joint_values = apply_joint_offsets(guiref, joint_values)
-    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+    target_e = apply_ext_offsets(guiref, target_e)
+    target_j = apply_joint_offsets(guiref, target_j)
+    logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (target_e, target_j))
 
     model.run_status = RunStatus.JOGGING
     future = send_and_wait_unless_cancel(model, rrc.GetJoints())
     model.run_status = RunStatus.STOPPED
     if future.done:
-        joint_values, ext_values = future.value
-        logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (ext_values, joint_values))
+        _joint_values, _ext_values = future.value
+        actual_j = list(_ext_values)[:3]
+        actual_e = list(_joint_values)[:6]
+        logger_exe.info("Current Robot Joints (Ext, Joint): %s, %s" % (actual_e, actual_j))
+        error_j = [a-b for a , b in zip (actual_j, target_j)]
+        error_e = [a-b for a , b in zip (actual_e, target_e)]
+        logger_exe.info("Error (Ext, Joint): %s, %s" % (error_e, error_j))
     else:
         logger_exe.warning("UI stop button pressed before MoveToJoints in JogRobotToState Movement is completed.")
 

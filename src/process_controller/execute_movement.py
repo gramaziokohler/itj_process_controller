@@ -474,6 +474,13 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
         logger_exe.warning("execute_robotic_*_movement() stopped beacause user canceled while SetAcceleration().")
         return False
 
+    # * Get Robot Target (Frame from controller) for distance calculation
+    future = send_and_wait_unless_cancel(model, rrc.GetRobtarget())
+    if not future.done:
+        logger_exe.warning("execute_robotic_*_movement() stopped beacause user canceled while GetRobtarget().")
+        return False
+    start_frame, _ = future.value
+
     # We store the future results of the movement commands in this list.
     # This allow us to monitor the results and keep a known number of buffer points
     futures = []
@@ -518,8 +525,9 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
         # Lopping while active_point is just STEPS_TO_BUFFER before the current_step.
         while (True):
             # Break the while loop and allow next point
-            if active_point >= current_step - STEPS_TO_BUFFER:
+            if len(futures) != total_steps and active_point >= current_step - STEPS_TO_BUFFER:
                 break
+
             # Advance pointer when future is done
             if futures[active_point].done:
                 # Human readable progress counter
@@ -538,20 +546,9 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
                 guiref['exe']['last_completed_trajectory_point'].set(str(active_point))
                 active_point += 1
 
-            # Read the RobTarget as it comes back, compute deviation
-            # if position_readout_futures[position_readout_point].done:
-            #     if movement.path_from_link is not None:
-            #         target_frame = movement.path_from_link["robot11_tool0"][position_readout_point]  # type: Frame
-            #         target_frame = frame_to_millimeters(target_frame)
-            #         target_ext_axes = to_millimeters(movement.trajectory.points[position_readout_point].prismatic_values)
-            #         actual_frame, actual_ext_axes = position_readout_futures[position_readout_point].value
-            #         actual_ext_axes = actual_ext_axes.prismatic_values
-            #         deviation_frame = target_frame.point.distance_to_point(actual_frame.point)
-            #         deviation_ext_axes = Point(*target_ext_axes).distance_to_point(Point(*actual_ext_axes))
-            #         logger_exe.info("Deviation for point %i: Frame Deviation = %.2fmm, ExtAxes Deviation = %.2fmm" %
-            #                         (position_readout_point, deviation_frame, deviation_ext_axes))
-            #         guiref['exe']['last_deviation'].set("%.2fmm" % (deviation_frame))
-            #     position_readout_point += 1
+            # break after the last point is finished
+            if len(futures) == total_steps and futures[-1].done:
+                break
 
             # Breaks entirely if model.run_status is STOPPED
             if model.run_status == RunStatus.STOPPED:
@@ -559,13 +556,16 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
                 return False
 
     # Final deviation
-    deviation = check_deviation(model, movement.target_frame)
-    if deviation is not None:
-        logger_exe.info("Movement (%s) target frame deviation %s mm" % (movement.movement_id, deviation))
-        guiref['exe']['last_deviation'].set("%.2fmm" % (deviation))
-    else:
-        logger_exe.warning("execute_robotic_*_movement stopped before deviation result (future not arrived)")
+    future = send_and_wait_unless_cancel(model, rrc.GetRobtarget())
+    if not future.done:
+        logger_exe.warning("execute_robotic_*_movement() stopped beacause user canceled while GetRobtarget().")
         return False
+    end_frame, _ = future.value
+
+    start_end_distance = start_frame.point.distance_to_point(end_frame.point)
+    logger_exe.info("Movement (%s) start to end distance %s mm" % (movement.movement_id, start_end_distance))
+
+    guiref['exe']['last_deviation'].set("%.2fmm" % (start_end_distance))
 
     return True
 
@@ -821,13 +821,7 @@ def execute_robotic_clamp_sync_linear_movement(guiref, model: RobotClampExecutio
     ############################
 
     # * Final deviation
-    # deviation = check_deviation(model, movement.target_frame)
-    # if deviation is not None:
-    #     logger_exe.info("Movement (%s) target frame deviation %s mm" % (movement.movement_id, deviation))
-    #     guiref['exe']['last_deviation'].set("%.2fmm" % (deviation))
-    # else:
-    #     logger_exe.warning("execute_robotic_clamp_sync_linear_movement stopped before deviation result (future not arrived)")
-    #     return False
+
     return True
 
 

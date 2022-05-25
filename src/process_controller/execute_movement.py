@@ -1306,12 +1306,12 @@ def execute_compare_joint_values(guiref, model: RobotClampExecutionModel, moveme
 def execute_ui_toolchanger_probe(guiref, model: RobotClampExecutionModel, q):
     model.run_status = RunStatus.JOGGING
     q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
-    success = execute_toolchanger_probe(guiref, model, q)
+    success = execute_toolchanger_probe(guiref, model)
     model.run_status = RunStatus.STOPPED
     q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
 
 
-def execute_toolchanger_probe(guiref, model: RobotClampExecutionModel, q, probing_increment=0.5, maximum_probing_distance=15):
+def execute_toolchanger_probe(guiref, model: RobotClampExecutionModel, probing_increment=0.5, maximum_probing_distance=15):
     """
     Move robot grantry towards the flange (=toolchanger)'s Z+ direction
     until probing switch signal is LOW.

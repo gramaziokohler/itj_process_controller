@@ -1021,7 +1021,7 @@ def execute_set_workpiece_weight(guiref, model: RobotClampExecutionModel, moveme
 #####################################################
 
 
-def execute_jog_robot_to_config(guiref, model, config: Configuration, message: str, q):
+def execute_jog_robot_to_config(guiref, model: RobotClampExecutionModel, config: Configuration, message: str, q):
     """Performs RoboticDigitalOutput Movement by setting the robot's IO signals
 
     This functions blocks and waits for the completion. For example if operator did not
@@ -1268,7 +1268,7 @@ def execute_shake_gantry(guiref, model: RobotClampExecutionModel, shake_amount, 
     return True
 
 
-def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
+def execute_compare_joint_values(guiref, model: RobotClampExecutionModel, movement: RoboticMovement):
     """
     Read and display the last trajectory point values from the selected movement
     Dispaly the values with joint offsets added.
@@ -1304,7 +1304,7 @@ def execute_compare_joint_values(guiref, model, movement: RoboticMovement):
     return future.done
 
 
-def execute_ui_toolchanger_probe(guiref, model, q):
+def execute_ui_toolchanger_probe(guiref, model: RobotClampExecutionModel, q):
     model.run_status = RunStatus.JOGGING
     q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
     success = execute_toolchanger_probe(guiref, model, q)
@@ -1312,7 +1312,7 @@ def execute_ui_toolchanger_probe(guiref, model, q):
     q.put(SimpleNamespace(type=ProcessControllerBackgroundCommand.UI_UPDATE_STATUS))
 
 
-def execute_toolchanger_probe(guiref, model, q, probing_increment=0.5, maximum_probing_distance=15):
+def execute_toolchanger_probe(guiref, model: RobotClampExecutionModel, q, probing_increment=0.5, maximum_probing_distance=15):
     """
     Move robot grantry towards the flange (=toolchanger)'s Z+ direction
     until probing switch signal is LOW.

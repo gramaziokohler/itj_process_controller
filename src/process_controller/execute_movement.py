@@ -1218,9 +1218,9 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
 
                 # * Double check the last two frames are agreeing with each other
                 t_camera_from_observedmarker = model.ros_clamps.markers_transformation[camera_stream_name][-1]
-                new_offset, correction_amount_XY, correction_amount_Z = compute_marker_correction(guiref, model, movement, t_camera_from_observedmarker)
+                new_offset, correction_amount_XY, correction_amount_Z, t_flange_from_newflange = compute_marker_correction(guiref, model, movement, t_camera_from_observedmarker)
                 t_camera_from_observedmarker_2 = model.ros_clamps.markers_transformation[camera_stream_name][-2]
-                new_offset_2, _, _ = compute_marker_correction(guiref, model, movement, t_camera_from_observedmarker_2)
+                new_offset_2, _, _, _ = compute_marker_correction(guiref, model, movement, t_camera_from_observedmarker_2)
                 agreeable_threshold = 0.2
                 difference = [abs(i-j) for i, j in zip(new_offset, new_offset_2)]
 
@@ -1249,6 +1249,22 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
             logger_exe.info("Current Gantry Offset Values: X=%s Y=%s Z=%s " %
                             (guiref['offset']['Ext_X'].get(), guiref['offset']['Ext_Y'].get(), guiref['offset']['Ext_Z'].get()))
 
+            # ! After converging, we save the joint offsets
+            future = send_and_wait_unless_cancel(model, rrc.GetJoints())
+            if not future.done:
+                logger_exe.warning("UI stop button pressed before MoveToJoints in AcquireDockingOffset Movement is completed.")
+                return False
+            new_j, new_e = future.value
+            new_j = list(new_j)
+            old_j = to_degrees(original_config.revolute_values)
+            joint_offset = [p-q for p,q in zip(new_j , old_j)]
+            logger_exe.info("Robot joint offste values: %s" % joint_offset)
+            guiref['offset']['Rob_J1'].set("%.4g" % round(joint_offset[0], 4))
+            guiref['offset']['Rob_J2'].set("%.4g" % round(joint_offset[1] ,4))
+            guiref['offset']['Rob_J3'].set("%.4g" % round(joint_offset[2] ,4))
+            guiref['offset']['Rob_J4'].set("%.4g" % round(joint_offset[3] ,4))
+            guiref['offset']['Rob_J5'].set("%.4g" % round(joint_offset[4] ,4))
+            guiref['offset']['Rob_J6'].set("%.4g" % round(joint_offset[5] ,4))
             return True
 
         # * Sanity check
@@ -1263,19 +1279,44 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
         guiref['offset']['Ext_X'].set("%.4g" % round(prev_offset[0] + new_offset[0], 4))
         guiref['offset']['Ext_Y'].set("%.4g" % round(prev_offset[1] + new_offset[1], 4))
         guiref['offset']['Ext_Z'].set("%.4g" % round(prev_offset[2] + new_offset[2], 4))
-        # * Move the robot to end config of movement with new offset
-        config = original_config
-        ext_values = apply_ext_offsets(guiref, to_millimeters(config.prismatic_values))
-        joint_values = apply_joint_offsets(guiref, to_degrees(config.revolute_values))
 
-        logger_exe.info("Moving robot to new offset value.")
-        instruction = rrc.MoveToJoints(joint_values, ext_values, 500, rrc.Zone.FINE, feedback_level=rrc.FeedbackLevel.DONE)
+        # * Compute new world frame to send the robot to using controller IK
+        # ! This is experimental as we will rely on the controller to perform the IK
+        future = send_and_wait_unless_cancel(model, rrc.GetFrame())
+        if not future.done:
+            return False
+
+        current_flange = future.value
+        t_world_from_current_flange = Transformation.from_frame(current_flange)
+        t_world_from_newflange = t_world_from_current_flange * t_flange_from_newflange
+        new_frame = Frame.from_transformation(t_world_from_newflange)
+
+        ext_values = apply_ext_offsets(guiref, to_millimeters(original_config.prismatic_values))
+
+        logger_exe.info("Moving robot to new offset value and target frame.")
+        instruction = rrc.MoveToRobtarget(new_frame, ext_values, 500, rrc.Zone.FINE, feedback_level=rrc.FeedbackLevel.DONE)
         future = send_and_wait_unless_cancel(model, instruction)
-        if future.done:
-            logger_exe.info("Robot move to new offset value complete.")
-        else:
+        if not future.done:
             logger_exe.warning("UI stop button pressed before MoveToJoints in AcquireDockingOffset Movement is completed.")
             return False
+        logger_exe.info("Robot moved to new offset value and target frame.")
+
+
+
+
+        # * Move the robot to end config of movement with new offset
+        # config = original_config
+        # ext_values = apply_ext_offsets(guiref, to_millimeters(config.prismatic_values))
+        # joint_values = apply_joint_offsets(guiref, to_degrees(config.revolute_values))
+
+        # logger_exe.info("Moving robot to new offset value.")
+        # instruction = rrc.MoveToJoints(joint_values, ext_values, 500, rrc.Zone.FINE, feedback_level=rrc.FeedbackLevel.DONE)
+        # future = send_and_wait_unless_cancel(model, instruction)
+        # if future.done:
+        #     logger_exe.info("Robot move to new offset value complete.")
+        # else:
+        #     logger_exe.warning("UI stop button pressed before MoveToJoints in AcquireDockingOffset Movement is completed.")
+        #     return False
 
     logger_exe.warning("AcquireDockingOffset exhausted maxIteration %s without convergence" % max_iteration)
     return False
@@ -1612,7 +1653,7 @@ def compute_marker_correction(guiref, model: RobotClampExecutionModel, movement:
     correction_amount_XY = Vector(v_flange_correction.x, v_flange_correction.y).length
     correction_amount_Z = v_flange_correction.z
 
-    return (new_offset, correction_amount_XY, correction_amount_Z)
+    return (new_offset, correction_amount_XY, correction_amount_Z, t_flange_from_newflange)
 
 
 #########################

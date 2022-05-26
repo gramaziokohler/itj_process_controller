@@ -355,10 +355,10 @@ def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement
         return False
 
     # * Perform probing till switch is clicked
-    probe_success = execute_toolchanger_probe(guiref, model)
-    if not probe_success:
-        logger_exe.info("execute_lock_tool_movement() Failed because probing cannot find switch.")
-        return False
+    # probe_success = execute_toolchanger_probe(guiref, model)
+    # if not probe_success:
+    #     logger_exe.info("execute_lock_tool_movement() Failed because probing cannot find switch.")
+    #     return False
 
     # * Lock Tool changer
     future_results = []

@@ -459,6 +459,8 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
     """
 
     STEPS_TO_BUFFER = 5  # Number of steps to allow in the robot buffer
+    start_time = datetime.datetime.now()
+    last_time = datetime.datetime.now()
 
     if movement.trajectory is None:
         logger_exe.warning("Attempt to execute movement with no trajectory")
@@ -488,7 +490,6 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
     active_point = 0
     position_readout_point = 0
     total_steps = len(movement.trajectory.points)
-    last_time = datetime.datetime.now()
 
     # Check softmove state and send softmove command if state is different.
     # - the movement.softmove properity was marked by _mark_movements_as_softmove() when process is loaded.
@@ -505,7 +506,8 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
         position_readout_point = active_point
 
     guiref['exe']['last_completed_trajectory_point'].set(" - ")
-    guiref['exe']['last_deviation'].set(" - ")
+    guiref['exe']['start_end_distance'].set(" - ")
+
     for current_step, point in enumerate(movement.trajectory.points):
         # Skip points in the case of a halfway start
         if current_step < active_point:
@@ -515,7 +517,7 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
             continue
 
         # Format movement and send robot command
-        logger_exe.info("Sending command %i of %i" % (current_step, total_steps))
+        logger_exe.info("Sending Point %i (0 to %i)" % (current_step, total_steps - 1))
         instruction = trajectory_point_to_instruction(model, movement, guiref, current_step)
         futures.append(model.ros_robot.send(instruction))
 
@@ -540,8 +542,8 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
                     movement.last_completed_point = completed_progress_index  # Kept for the Step-from-Point Dialogbox
 
                 # Logging and advance active_point pointer
-                logger_exe.info("Point %i is done. Delta time %f seconds." %
-                                (active_point, (datetime.datetime.now() - last_time).total_seconds()))
+                delta_time = (datetime.datetime.now() - last_time).total_seconds()
+                logger_exe.info("Point %i is done. Delta time %f seconds." % (active_point, delta_time))
                 last_time = datetime.datetime.now()
                 guiref['exe']['last_completed_trajectory_point'].set(str(active_point))
                 active_point += 1
@@ -555,7 +557,7 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
                 logger_exe.warning("UI stop button pressed before Robotic Free Movement (%s) is completed." % (movement.movement_id))
                 return False
 
-    # Final deviation
+    # * Measure Start-End Distance
     future = send_and_wait_unless_cancel(model, rrc.GetRobtarget())
     if not future.done:
         logger_exe.warning("execute_robotic_*_movement() stopped beacause user canceled while GetRobtarget().")
@@ -564,8 +566,12 @@ def execute_robotic_free_movement(guiref, model: RobotClampExecutionModel, movem
 
     start_end_distance = start_frame.point.distance_to_point(end_frame.point)
     logger_exe.info("Movement (%s) start to end distance %s mm" % (movement.movement_id, start_end_distance))
+    guiref['exe']['start_end_distance'].set("%.2fmm" % (start_end_distance))
 
-    guiref['exe']['last_deviation'].set("%.2fmm" % (start_end_distance))
+    # * Measure total time taken
+    total_seconds = (datetime.datetime.now() - start_time).total_seconds()
+    logger_exe.info("Movement (%s) total time %s s" % (movement.movement_id, total_seconds))
+
 
     return True
 
@@ -633,6 +639,13 @@ def execute_robotic_clamp_sync_linear_movement(guiref, model: RobotClampExecutio
     if movement.trajectory is None:
         logger_exe.warning("Attempt to execute movement with no trajectory")
         return False
+
+    # * Get Robot Target (Frame from controller) for distance calculation
+    future = send_and_wait_unless_cancel(model, rrc.GetRobtarget())
+    if not future.done:
+        logger_exe.warning("execute_robotic_clamp_sync_linear_movement() stopped beacause user canceled while GetRobtarget().")
+        return False
+    start_frame, _ = future.value
 
     # * Set Acceleration Settings to 100% (minimize aceleration phase)
     result = send_and_wait_unless_cancel(model, rrc.SetAcceleration(100, 100))
@@ -716,7 +729,7 @@ def execute_robotic_clamp_sync_linear_movement(guiref, model: RobotClampExecutio
 
     # * Deviation Calculation is not implemented yet (We will need get Joints and do FK here and cmopared with TrajPt)
     guiref['exe']['last_completed_trajectory_point'].set(" - ")
-    guiref['exe']['last_deviation'].set(" - ")
+    guiref['exe']['start_end_distance'].set(" - ")
 
     # In case of a START_FROM_PT
     # The active point number is shifted
@@ -820,7 +833,16 @@ def execute_robotic_clamp_sync_linear_movement(guiref, model: RobotClampExecutio
 
     ############################
 
-    # * Final deviation
+    # * Measure Start-End Distance
+    future = send_and_wait_unless_cancel(model, rrc.GetRobtarget())
+    if not future.done:
+        logger_exe.warning("execute_robotic_clamp_sync_linear_movement() stopped beacause user canceled while GetRobtarget().")
+        return False
+    end_frame, _ = future.value
+
+    start_end_distance = start_frame.point.distance_to_point(end_frame.point)
+    logger_exe.info("Movement (%s) start to end distance %s mm" % (movement.movement_id, start_end_distance))
+    guiref['exe']['start_end_distance'].set("%.2fmm" % (start_end_distance))
 
     return True
 
@@ -1224,7 +1246,7 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
                 agreeable_threshold = 0.2
                 difference = [abs(i-j) for i, j in zip(new_offset, new_offset_2)]
 
-                # * If all difference agree, they can be
+                # * Get more frames if their difference is larger than threshold.
                 if all([d < agreeable_threshold for d in difference]):
                     logger_exe.info("AcquireDockingOffset stream = %s attempt %s received t_camera_from_marker = %s" % (camera_stream_name, i, t_camera_from_observedmarker))
                     listener.unsubscribe()

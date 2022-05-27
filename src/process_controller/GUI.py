@@ -288,9 +288,9 @@ def create_ui_execution(root, q: Queue):
     tk.Label(robot_status_frame, text="Toolchanger signal", anchor=tk.W).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
     tk.Label(robot_status_frame, textvariable=ui_handles['toolchanger_signal'], font=tk.big_status_font, anchor=tk.CENTER).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
 
-    ui_handles['last_deviation'] = tk.StringVar(value=" - ")
-    tk.Label(robot_status_frame, text="Last Deviation", anchor=tk.W).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
-    tk.Label(robot_status_frame, textvariable=ui_handles['last_deviation'], font=tk.big_status_font, anchor=tk.CENTER).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
+    ui_handles['start_end_distance'] = tk.StringVar(value=" - ")
+    tk.Label(robot_status_frame, text="Movement Distance", anchor=tk.W).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
+    tk.Label(robot_status_frame, textvariable=ui_handles['start_end_distance'], font=tk.big_status_font, anchor=tk.CENTER).pack(side=tk.TOP, fill=tk.BOTH, padx=10)
 
     right_frame = ttk.Frame(frame, borderwidth=2, relief='solid', width=400)
     right_frame.pack(fill=tk.BOTH, expand=1, side=tk.LEFT, padx=6, pady=3)

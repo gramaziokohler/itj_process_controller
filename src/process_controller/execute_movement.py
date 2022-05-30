@@ -412,7 +412,8 @@ def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement
         if tc_lock and not probe_touch:
             logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Tool is locked. Probe is not touched." % (movement.movement_id, movement.tool_id))
 
-            model.ros_robot.send(rrc.SetDigital('doUnitR11ValveA1', 1, feedback_level=1))
+            model.ros_robot.send(rrc.SetDigital('doUnitR11ValveA1', 0, feedback_level=1))
+            model.ros_robot.send(rrc.SetDigital('doUnitR11ValveB1', 1, feedback_level=1))
             result = send_and_wait_unless_cancel(model, rrc.SetDigital('doUnitR11ValveB1', 0, feedback_level=1))
             if result.done:
                 logger_exe.warning("Tool Changer changed back to Unlocked.")
@@ -1297,7 +1298,7 @@ def execute_acquire_docking_offset(guiref, model: RobotClampExecutionModel, move
 
         logger_exe.info("Correction amount (relative to current position) (in Flange Coordinates): XY = %1.2f , Z = %1.2f" % (correction_amount_XY, correction_amount_Z))
 
-        # * Apply new offsets to existing offsets
+        # * Apply new offsets to existing offsets6
         guiref['offset']['Ext_X'].set("%.4g" % round(prev_offset[0] + new_offset[0], 4))
         guiref['offset']['Ext_Y'].set("%.4g" % round(prev_offset[1] + new_offset[1], 4))
         guiref['offset']['Ext_Z'].set("%.4g" % round(prev_offset[2] + new_offset[2], 4))

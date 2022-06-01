@@ -428,7 +428,7 @@ def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement
             logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Exhausted shake attempts: %s" % (movement.movement_id, movement.tool_id, shake_count))
 
         logger_exe.info("Bad lock: tc_lock = False, will attempt to shake. (probe_touch = %s)" % (probe_touch))
-        shake_amount = 0.3 + (shake_count * 0.4)
+        shake_amount = 0.3 + (shake_count * 0.2)
         shake_speed = 30
         shake_repeat = 3
         shake_success = execute_shake_gantry(guiref, model, shake_amount, shake_speed, shake_repeat)

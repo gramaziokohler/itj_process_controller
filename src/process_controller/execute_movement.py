@@ -348,7 +348,7 @@ def execute_robotic_digital_output_screwdriver(guiref, model: RobotClampExecutio
         time.sleep(0.02)
 
 
-def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement: RoboticDigitalOutput, shake_attempts = 4):
+def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement: RoboticDigitalOutput, shake_attempts = 5):
     # * Check to make sure we are making sense
     if movement.digital_output != DigitalOutput.LockTool:
         logger_exe.error("execute_lock_tool_movement() called with movement.digital_output != DigitalOutput.LockTool")
@@ -428,14 +428,14 @@ def execute_lock_tool_movement(guiref, model: RobotClampExecutionModel, movement
             logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Exhausted shake attempts: %s" % (movement.movement_id, movement.tool_id, shake_count))
 
         logger_exe.info("Bad lock: tc_lock = False, will attempt to shake. (probe_touch = %s)" % (probe_touch))
-        shake_amount = 0.3 + (shake_count * 0.5)
+        shake_amount = 0.3 + (shake_count * 0.4)
         shake_speed = 30
         shake_repeat = 3
         shake_success = execute_shake_gantry(guiref, model, shake_amount, shake_speed, shake_repeat)
         if not shake_success:
             logger_exe.info("DigitalOutput LockTool (%s) for tool %s Failed. Shake Failed." % (movement.movement_id, movement.tool_id))
             return False
-
+        shake_count +=1
         time.sleep(0.3)
 
     return False

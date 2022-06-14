@@ -151,7 +151,7 @@ def execute_background_commands(guiref, model: RobotClampExecutionModel, q):
                 if n is None:
                     return True
                 if n > max_start_number:
-                    logger_bg.warn("Input number larger than number of trajectory points")
+                    logger_bg.warning("Input number larger than number of trajectory points")
                     return True
 
                 # Change Status
